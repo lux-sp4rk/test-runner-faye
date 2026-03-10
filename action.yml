@@ -14,9 +14,9 @@ inputs:
     required: false
     default: 'arcee/trinity-mini'
   passes:
-    description: 'Which hunting passes to run (comma-separated: logic,security,performance)'
+    description: 'Which hunting passes to run (comma-separated: logic,security,performance,judge)'
     required: false
-    default: 'logic,security'
+    default: 'logic,security,judge'
   severity-threshold:
     description: 'Minimum severity to report (note, warning, error)'
     required: false

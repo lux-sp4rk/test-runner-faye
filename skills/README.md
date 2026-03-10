@@ -11,6 +11,7 @@ Each skill is a self-contained script that can be invoked independently.
 | Logic Hunt | `logic_hunt.sh` | Edge cases, null pointers, race conditions | trinity-mini |
 | Security Hunt | `security_hunt.sh` | Vulnerabilities, auth gaps, injection | trinity-mini |
 | Performance Hunt | `performance_hunt.sh` | N+1s, leaks, inefficiency | trinity-mini |
+| Judge | `judge_hunt.sh` | Verify findings, remove false positives, deduplicate, re-rank | trinity-mini |
 
 ## Usage
 

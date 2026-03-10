@@ -9,7 +9,7 @@ set -euo pipefail
 # Configuration
 ARCEE_API_KEY="${ARCEE_API_KEY:-}"
 MODEL="${MODEL:-arcee/trinity-mini}"
-PASSES="${PASSES:-logic,security}"
+PASSES="${PASSES:-logic,security,judge}"
 SEVERITY_THRESHOLD="${SEVERITY_THRESHOLD:-warning}"
 MAX_FILES="${MAX_FILES:-20}"
 PR_NUMBER="${PR_NUMBER:-}"
@@ -174,6 +174,31 @@ main() {
   warning_count=$(echo "$all_findings" | jq '[.[] | select(.severity == "warning")] | length')
   
   log "Hunt complete. Found: $critical_count critical, $warning_count warnings"
+  
+  # === TWO-PASS VERIFICATION ===
+  # Run the Judge to verify findings, remove false positives, deduplicate
+  if [ "$all_findings" != "[]" ] && [ "$all_findings" != "null" ]; then
+    # Check if judge is enabled (default: enabled if findings exist)
+    if [[ "$PASSES" == *"judge"* ]] || [ -z "${DISABLE_JUDGE:-}" ]; then
+      log "⚖️ Summoning the Judge for verification..."
+      
+      local judge_model="${JUDGE_MODEL:-arcee/trinity-mini}"
+      local verified_findings
+      verified_findings=$("$SKILLS_DIR/judge_hunt.sh" "$all_findings" "$judge_model")
+      
+      if [ -n "$verified_findings" ] && echo "$verified_findings" | jq -e '.' >/dev/null 2>&1; then
+        # Filter to only verified findings
+        all_findings=$(echo "$verified_findings" | jq '[.[] | select(.verified == true)]' 2>/dev/null || echo "$verified_findings")
+        log "⚖️ Judge verified. $(echo "$all_findings" | jq 'length') findings remain."
+      else
+        log "⚖️ Judge verification failed, keeping original findings."
+      fi
+    fi
+  fi
+  
+  # Recount after verification
+  critical_count=$(echo "$all_findings" | jq '[.[] | select(.severity == "critical")] | length')
+  warning_count=$(echo "$all_findings" | jq '[.[] | select(.severity == "warning")] | length')
   
   # Determine status
   local status="success"
