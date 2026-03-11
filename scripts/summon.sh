@@ -62,7 +62,7 @@ get_changed_files() {
 		local excluded_count
 
 		filter_output=$(filter_test_files "$files")
-		# Extract count from last line (stderr redirected to stdout in subshell)
+		# Extract count from last line
 		excluded_count=$(echo "$filter_output" | tail -n 1)
 		# Get filtered files (all lines except last)
 		filtered_files=$(echo "$filter_output" | sed '$d')
@@ -116,23 +116,32 @@ is_test_file() {
 	return 1
 }
 
-# Filters test files from a list and returns count via stderr
+# Filters test files from a list and returns count via stdout (last line)
 filter_test_files() {
 	local files="$1"
 	local excluded_count=0
+	local excluded_files=""
 
 	while IFS= read -r file; do
 		[ -z "$file" ] && continue
 		if is_test_file "$file"; then
 			((excluded_count++))
-			log "  → Excluded test file: $file"
+			excluded_files="$excluded_files$file
+"
 		else
 			echo "$file"
 		fi
 	done <<<"$files"
 
-	# Return excluded count via stderr
-	echo "$excluded_count" >&2
+	# Log excluded files to stderr
+	if [ -n "$excluded_files" ]; then
+		while IFS= read -r file; do
+			[ -n "$file" ] && log "  → Excluded test file: $file"
+		done <<<"$excluded_files"
+	fi
+
+	# Return excluded count via stdout (last line)
+	echo "$excluded_count"
 }
 
 # Run a specific skill
