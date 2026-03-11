@@ -133,9 +133,14 @@ main() {
       continue
     fi
     
-    # Run each skill
+    # Run each skill (except judge - judge runs once at the end)
     for pass in "${PASS_ARRAY[@]}"; do
       pass=$(echo "$pass" | xargs)  # trim whitespace
+      
+      # Skip judge in per-file loop - it runs once at the end
+      if [ "$pass" = "judge" ]; then
+        continue
+      fi
       
       # Map pass name to skill
       local skill_name="$pass"
