@@ -15,8 +15,8 @@ MODEL="${3:-${MODEL:-arcee/trinity-mini}}"
 ARCEE_API_KEY="${ARCEE_API_KEY:-}"
 
 if [ -z "$FILE" ] || [ -z "$DIFF_CONTENT" ]; then
-  echo "[]"
-  exit 0
+	echo "[]"
+	exit 0
 fi
 
 # Get the directory where this script lives (for loading prompts)
@@ -30,7 +30,7 @@ PROMPT="${PROMPT}
 File: $FILE"
 
 # Truncate diff if too large
-TRUNCATED_DIFF=$(echo "$DIFF_CONTENT" | head -c 15000)
+TRUNCATED_DIFF=$(head -c 15000 <<<"$DIFF_CONTENT")
 
 FULL_PROMPT="${PROMPT}
 
@@ -54,11 +54,11 @@ attempt=0
 max_attempts=3
 
 while [ $attempt -lt $max_attempts ]; do
-  RESPONSE=$(curl -s -w "\n%{http_code}" \
-    -X POST "https://api.arcee.ai/api/v1/chat/completions" \
-    -H "Authorization: Bearer $ARCEE_API_KEY" \
-    -H "Content-Type: application/json" \
-    -d "{
+	RESPONSE=$(curl -s -w "\n%{http_code}" \
+		-X POST "https://api.arcee.ai/api/v1/chat/completions" \
+		-H "Authorization: Bearer $ARCEE_API_KEY" \
+		-H "Content-Type: application/json" \
+		-d "{
       \"model\": \"$MODEL\",
       \"messages\": [
         {\"role\": \"system\", \"content\": \"You are the Logic Hunter. Find edge cases, null pointers, off-by-one errors, race conditions, and broken assumptions. Be precise. Only report real issues.\"},
@@ -67,31 +67,31 @@ while [ $attempt -lt $max_attempts ]; do
       \"temperature\": 0.1,
       \"max_tokens\": 4000
     }" 2>/dev/null || echo -e "\n000")
-  
-  HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-  BODY=$(echo "$RESPONSE" | sed '$d')
-  
-  if [ "$HTTP_CODE" = "200" ]; then
-    CONTENT=$(echo "$BODY" | jq -r '.choices[0].message.content // empty' 2>/dev/null || echo "")
-    
-    if [ -n "$CONTENT" ]; then
-      # Try to parse as JSON array
-      if echo "$CONTENT" | jq -e 'if type == "array" then . else error("not array") end' >/dev/null 2>&1; then
-        echo "$CONTENT"
-        exit 0
-      fi
-      
-      # Try to extract JSON array from markdown
-      EXTRACTED=$(echo "$CONTENT" | grep -oP '\[.*\]' | tail -1)
-      if [ -n "$EXTRACTED" ] && echo "$EXTRACTED" | jq -e '.' >/dev/null 2>&1; then
-        echo "$EXTRACTED"
-        exit 0
-      fi
-    fi
-  fi
-  
-  attempt=$((attempt + 1))
-  sleep 2
+
+	HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+	BODY=$(echo "$RESPONSE" | sed '$d')
+
+	if [ "$HTTP_CODE" = "200" ]; then
+		CONTENT=$(echo "$BODY" | jq -r '.choices[0].message.content // empty' 2>/dev/null || echo "")
+
+		if [ -n "$CONTENT" ]; then
+			# Try to parse as JSON array
+			if echo "$CONTENT" | jq -e 'if type == "array" then . else error("not array") end' >/dev/null 2>&1; then
+				echo "$CONTENT"
+				exit 0
+			fi
+
+			# Try to extract JSON array from markdown
+			EXTRACTED=$(echo "$CONTENT" | grep -oP '\[.*\]' | tail -1)
+			if [ -n "$EXTRACTED" ] && echo "$EXTRACTED" | jq -e '.' >/dev/null 2>&1; then
+				echo "$EXTRACTED"
+				exit 0
+			fi
+		fi
+	fi
+
+	attempt=$((attempt + 1))
+	sleep 2
 done
 
 # Return empty on failure
