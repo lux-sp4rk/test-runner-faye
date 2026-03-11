@@ -159,19 +159,24 @@ main() {
       local findings
       findings=$(run_skill "$skill_name" "$file" "$diff_content" "$skill_model")
       
-      # Add file to each finding if missing
-      findings=$(echo "$findings" | jq --arg file "$file" '[.[] | .file = ($file // .file)]')
-      
-      # Merge into all_findings
-      all_findings=$(echo "$all_findings" "$findings" | jq -s 'add // []')
+      # Validate and sanitize findings JSON
+      if echo "$findings" | jq -e '.' >/dev/null 2>&1; then
+        findings=$(echo "$findings" | jq --arg file "$file" '[.[] | .file = ($file // .file)]')
+        # Merge into all_findings with defensive parsing
+        all_findings=$(echo "$all_findings" "$findings" | jq -s 'add // []' 2>/dev/null || echo "[]")
+      else
+        log "  ⚠️ Invalid JSON from ${pass} hunter, skipping"
+      fi
     done
   done <<< "$files"
   
   # Count severities
   local critical_count
   local warning_count
-  critical_count=$(echo "$all_findings" | jq '[.[] | select(.severity == "critical")] | length')
-  warning_count=$(echo "$all_findings" | jq '[.[] | select(.severity == "warning")] | length')
+  # Defensive: ensure all_findings is valid JSON before parsing
+  all_findings=$(echo "$all_findings" | jq '.' 2>/dev/null || echo "[]")
+  critical_count=$(echo "$all_findings" | jq '[.[] | select(.severity == "critical")] | length' 2>/dev/null || echo "0")
+  warning_count=$(echo "$all_findings" | jq '[.[] | select(.severity == "warning")] | length' 2>/dev/null || echo "0")
   
   log "Hunt complete. Found: $critical_count critical, $warning_count warnings"
   
@@ -196,9 +201,10 @@ main() {
     fi
   fi
   
-  # Recount after verification
-  critical_count=$(echo "$all_findings" | jq '[.[] | select(.severity == "critical")] | length')
-  warning_count=$(echo "$all_findings" | jq '[.[] | select(.severity == "warning")] | length')
+  # Recount after verification (defensive)
+  all_findings=$(echo "$all_findings" | jq '.' 2>/dev/null || echo "[]")
+  critical_count=$(echo "$all_findings" | jq '[.[] | select(.severity == "critical")] | length' 2>/dev/null || echo "0")
+  warning_count=$(echo "$all_findings" | jq '[.[] | select(.severity == "warning")] | length' 2>/dev/null || echo "0")
   
   # Determine status
   local status="success"
@@ -208,9 +214,9 @@ main() {
     status="warning"
   fi
   
-  # Save outputs
+  # Save outputs (defensive)
   echo "$status" > "$STATUS_FILE"
-  echo "$all_findings" | jq '.' > "$FINDINGS_FILE"
+  echo "$all_findings" | jq '.' 2>/dev/null > "$FINDINGS_FILE" || echo "[]" > "$FINDINGS_FILE"
   
   # Set GitHub Actions outputs
   if [ -n "${GITHUB_OUTPUT:-}" ]; then
