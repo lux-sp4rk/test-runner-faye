@@ -54,8 +54,8 @@ runs:
     - name: Setup Test Runner Faye
       shell: bash
       run: |
-        # Install dependencies
-        sudo apt-get update -qq && sudo apt-get install -y -qq jq curl
+        # Install system dependencies
+        sudo apt-get update -qq && sudo apt-get install -y -qq jq curl bc
         
         # Setup workspace
         mkdir -p .test-runner-faye
@@ -79,16 +79,34 @@ runs:
         PROJECT_TYPE=""
         TEST_COMMAND=""
         COVERAGE_COMMAND=""
+        PKG_MANAGER="npm"
         
         # Node.js
         if [ -f "package.json" ]; then
           PROJECT_TYPE="nodejs"
+          
+          if [ -f "pnpm-lock.yaml" ]; then
+            PKG_MANAGER="pnpm"
+            if ! command -v pnpm &> /dev/null; then
+              echo "Installing pnpm..."
+              npm install -g pnpm
+            fi
+          elif [ -f "yarn.lock" ]; then
+            PKG_MANAGER="yarn"
+          fi
+          
           if [ -n "${{ inputs.test-command }}" ]; then
             TEST_COMMAND="${{ inputs.test-command }}"
             COVERAGE_COMMAND="${{ inputs.coverage-command }}"
           elif grep -q '"test' package.json; then
-            TEST_COMMAND="npm test"
-            COVERAGE_COMMAND="npm run test:coverage || npm run test -- --coverage || npm run coverage"
+            TEST_COMMAND="$PKG_MANAGER test"
+            COVERAGE_COMMAND="$PKG_MANAGER run test:coverage || $PKG_MANAGER run test -- --coverage || $PKG_MANAGER run coverage"
+          fi
+          
+          # Install dependencies if node_modules missing
+          if [ ! -d "node_modules" ]; then
+            echo "Installing dependencies with $PKG_MANAGER..."
+            $PKG_MANAGER install
           fi
         # Python
         elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ] || [ -f "setup.py" ]; then
@@ -100,6 +118,14 @@ runs:
             TEST_COMMAND="python -m pytest"
             COVERAGE_COMMAND="python -m pytest --cov=. --cov-report=json"
           fi
+          # Install dependencies
+          if [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt || true
+          fi
+          if [ -f "pyproject.toml" ]; then
+            pip install . || true
+          fi
+          pip install pytest pytest-cov || true
         # Go
         elif [ -f "go.mod" ]; then
           PROJECT_TYPE="go"
@@ -116,7 +142,7 @@ runs:
         echo "test_command=$TEST_COMMAND" >> "$GITHUB_OUTPUT"
         echo "coverage_command=$COVERAGE_COMMAND" >> "$GITHUB_OUTPUT"
         
-        echo "🔬 Detected project type: $PROJECT_TYPE"
+        echo "🔬 Detected project type: $PROJECT_TYPE ($PKG_MANAGER)"
         if [ -n "$TEST_COMMAND" ]; then
           echo "📋 Test command: $TEST_COMMAND"
         fi
@@ -158,7 +184,12 @@ runs:
         PROJECT_TYPE: ${{ steps.project.outputs.project }}
       with:
         script: |
-          const testResults = JSON.parse(process.env.TEST_RESULTS || '{"passed":0,"failed":0,"skipped":0}');
+          let testResults = {passed:0, failed:0, skipped:0};
+          try {
+            testResults = JSON.parse(process.env.TEST_RESULTS || '{"passed":0,"failed":0,"skipped":0}');
+          } catch(e) {
+            console.log("Error parsing test results:", e);
+          }
           const coverage = parseFloat(process.env.COVERAGE_PERCENT || '0');
           const status = process.env.STATUS || 'failure';
           const projectType = process.env.PROJECT_TYPE || 'unknown';
@@ -171,7 +202,7 @@ runs:
             (testResults.failures || []).slice(0, 5).forEach(f => {
               body += `- **${f.name}** — ${f.error}\n`;
             });
-            if (testResults.failures.length > 5) body += `- *...and ${testResults.failures.length - 5} more*\n`;
+            if (testResults.failures && testResults.failures.length > 5) body += `- *...and ${testResults.failures.length - 5} more*\n`;
             body += '\n';
           }
           
@@ -183,28 +214,32 @@ runs:
           body += `---\n*Validation status: **${status}***`;
           
           // Post comment
-          const { data: comments } = await github.rest.issues.listComments({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: context.issue.number
-          });
-          
-          const botComment = comments.find(c => c.body.includes('Test Runner Faye'));
-          
-          if (botComment) {
-            await github.rest.issues.updateComment({
+          try {
+            const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              comment_id: botComment.id,
-              body: body
+              issue_number: context.issue.number
             });
-          } else {
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: body
-            });
+            
+            const botComment = comments.find(c => c.body.includes('Test Runner Faye'));
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+          } catch (e) {
+            console.log("Error posting/updating comment:", e);
           }
 
     - name: Fail on Failure
