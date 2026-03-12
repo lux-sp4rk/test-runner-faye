@@ -1,4 +1,4 @@
-# AGENTS.md — Bug Hunter D33 Operational Protocol
+# AGENTS.md — Test Runner Faye Operational Protocol
 
 *Behavioral core lives in [SOUL.md](SOUL.md). This file governs operations.*
 
@@ -6,102 +6,99 @@
 
 ## 1. SESSION START (Summoning)
 
-The hunter awakens when summoned via GitHub Actions or OpenClaw subagent invocation.
+The validation specialist awakens when summoned via GitHub Actions or OpenClaw subagent invocation.
 
 ### Prerequisites Check
 ```bash
 # Required environment
-ARCEE_API_KEY=<valid_api_key>     # Hunter's blade — cannot hunt without
-MODEL=arcee/trinity-mini          # Default weapon; override per skill if needed
+ARCEE_API_KEY=<valid_api_key>     # Analysis engine
+MODEL=arcee/trinity-mini          # Default model
 
 # Optional overrides
-LOGIC_MODEL=<model>               # Override for logic hunter
-SECURITY_MODEL=<model>            # Override for security hunter  
-PERFORMANCE_MODEL=<model>         # Override for performance hunter
-PASSES=logic,security             # Which skills to summon
-MAX_FILES=20                      # Limit scope for speed
+TEST_COMMAND="npm test"          # Override test command
+COVERAGE_COMMAND="npm run coverage"  # Override coverage command
+PASSES=test,coverage,delta        # Which skills to invoke
+COVERAGE_THRESHOLD=70            # Minimum coverage percentage
 ```
 
 ### Validation Ritual
 1. Verify `ARCEE_API_KEY` is set and non-empty
 2. Confirm `skills/` directory exists and all skills are executable
-3. Check git state (must be in a repo with fetchable history)
-4. Load changed files list
-5. If no files changed → status=success, exit cleanly
+3. Detect project type (Node, Python, Go, Rust)
+4. Determine test and coverage commands
+5. Run test suite first, then coverage analysis
 
 ### Checkpoint
 ```bash
-# Log hunt parameters for debugging
-echo "[Bug Hunter D33] Model: $MODEL | Passes: $PASSES | Files: $file_count"
+echo "[Test Runner Faye] Project: $PROJECT_TYPE | Command: $TEST_COMMAND | Threshold: $COVERAGE_THRESHOLD%"
 ```
 
 ---
 
-## 2. THE HUNT (Session Execution)
+## 2. VALIDATION (Session Execution)
 
 ### Skill Invocation Order
-Skills are summoned in the order specified by `PASSES` (comma-separated):
+Skills are invoked in the order specified by `PASSES`:
 
 ```
-logic → security → performance
+test → coverage → delta
 ```
 
-Each skill is invoked independently with:
-- File path
-- Diff content (truncated to 15KB)
-- Model override (if specified)
+Each skill:
+- Runs the appropriate command
+- Parses output into structured JSON
+- Returns results to be aggregated
 
-### Retry Protocol
-Each skill call follows triple-redundancy:
-1. **First attempt** — Direct API call
-2. **Second attempt** — 2s backoff (transient network)
-3. **Third attempt** — 4s backoff (API pressure)
+### Test Runner (`skills/test-runner.sh`)
+- Executes test suite
+- Parses results (Jest, Vitest, pytest, Go test, Cargo test)
+- Returns: passed, failed, skipped, failures[]
 
-After 3 failures → skill returns empty array `[]`, hunt continues.
+### Coverage Analyzer (`skills/coverage-analyzer.sh`)
+- Runs coverage command
+- Parses coverage reports (JSON, lcov, cobertura)
+- Returns: percent, lines_covered, lines_total, uncovered_files[]
+
+### Delta Coverage (`skills/delta-coverage.sh`)
+- Analyzes git diff for new code
+- Cross-references with coverage data
+- Returns: new_lines, coverage_on_new, risky_files[]
 
 ### Output Aggregation
-- Each skill outputs JSON array of findings
-- Findings are merged: `all_findings = logic_findings + security_findings + performance_findings`
-- File attribution added if missing from skill output
-- Deduplication: Currently none (future: hash on file+line+message)
-
-### Progress Logging
-```bash
-[Hunt Start] Tracking N files...
-[Skill Call] Summoning {skill} hunter for {file}...
-[Hunt End] Found: X critical, Y warnings
-```
+All results merged into single report with:
+- Test summary
+- Coverage percentage
+- Status (pass/warn/fail based on threshold)
 
 ---
 
 ## 3. SESSION END (Dismissal)
 
 ### Persistence
-- `findings.json` — Full JSON array of all findings
+- `test-results.json` — Test execution results
+- `coverage-results.json` — Coverage analysis
 - `status` — `success` | `warning` | `failure`
-- GitHub Actions outputs set (if running in CI)
 
 ### Status Determination
-| Critical | Warnings | Status |
-|----------|----------|--------|
-| 0        | 0        | success |
-| 0        | >0       | warning |
-| >0       | any      | failure |
+| Tests | Coverage | Status |
+|-------|----------|--------|
+| All pass | >= threshold | success |
+| Some fail | >= threshold | warning |
+| Any fail | < threshold | failure |
 
 ### Cleanup
-- Remove temp files (none currently; skills write to stdout only)
-- Leave `.bug-hunter/` directory for post-hunt inspection
+- Remove temp files
+- Leave `.test-runner-faye/` directory for inspection
 
 ### Handoff
-If invoked as subagent, return structured result:
+If invoked as subagent, return:
 ```json
 {
   "status": "warning",
-  "findings": [...],
-  "critical_count": 0,
-  "warning_count": 3,
-  "files_reviewed": 5,
-  "skills_invoked": ["logic", "security"]
+  "tests": { "passed": 42, "failed": 2, "skipped": 5 },
+  "coverage": 68,
+  "threshold": 70,
+  "risky_files": ["src/new-feature.ts"]
 }
 ```
 
@@ -112,57 +109,54 @@ If invoked as subagent, return structured result:
 | Error | Response | Exit Code |
 |-------|----------|-----------|
 | Missing ARCEE_API_KEY | Log fatal, status=failure | 1 |
-| No files to review | Log info, status=success | 0 |
-| Skill returns invalid JSON | Log warning, continue | 0 |
-| All skills fail | Log warning, status=warning | 0 |
-| API rate limited (429) | Retry with backoff | 0 (if eventual success) |
-| Critical findings found | status=failure | 1 |
+| No test command found | Log warning, skip tests | 0 |
+| No coverage command | Log warning, skip coverage | 0 |
+| Tests fail | status=warning | 0 |
+| Coverage < threshold | status=failure | 1 |
+| All skills fail | Log fatal | 1 |
 
 ---
 
 ## 5. EXTERNAL INTEGRATION
 
 ### GitHub Actions
-Entry point: `action.yml` → `scripts/summon.sh`
-- Automatic PR comment posting
+Entry point: `action.yml`
+- Automatic PR comment with test + coverage summary
 - Check run creation
-- Inline annotations (future)
+- Fails workflow if threshold not met
 
 ### OpenClaw Subagent
-Entry point: `agent.yml` → `scripts/summon.sh`
-- Spawn via: `openclaw agent --agent bug-hunter-d33 --task "review PR #N"`
-- Returns structured JSON for parent agent consumption
+Entry point: `agent.yml`
+- Spawn via: `openclaw agent --agent test-runner-faye --task "validate PR #N"`
+- Returns structured JSON
 
 ### Local Invocation
 ```bash
-# Direct skill test
-./skills/logic_hunt.sh "src/file.py" "$(git diff HEAD -- src/file.py)"
+# Run tests only
+TEST_COMMAND="npm test" ./skills/test-runner.sh
 
-# Full hunt
-ARCEE_API_KEY=xxx ./scripts/summon.sh
+# Full validation
+ARCEE_API_KEY=xxx COVERAGE_THRESHOLD=80 ./scripts/validate.sh
 ```
 
 ---
 
-## 6. EXTENDING THE HUNT
+## 6. EXTENDING FAYE
 
-To add a new skill (e.g., `style_hunt`):
+To add a new validation skill (e.g., `lint`):
 
-1. Create `skills/style_hunt.sh` following the skill interface
-2. Add prompt to `prompts/style-hunter.md`
+1. Create `skills/lint-checker.sh`
+2. Add prompt to `prompts/lint-checker.md`
 3. Register in `agent.yml` passes section
-4. Update `PASSES` default or call explicitly with `PASSES=style`
-
-No changes needed to `summon.sh` — it dynamically discovers skills.
+4. Update `PASSES` default
 
 ---
 
 ## 7. SAFETY & PRIVACY
 
-- **API Keys**: Never logged, never cached, passed via env only
-- **Code**: Never leaves the hunt context (sent to Arcee API only)
-- **Logs**: File paths may appear in logs; diff content does not
-- **Retention**: Findings.json persists until next hunt or manual cleanup
+- **API Keys**: Never logged, passed via env only
+- **Code**: Analyzed locally, only results shared
+- **Logs**: File paths may appear; test output does not
 
 ---
 
@@ -170,13 +164,11 @@ No changes needed to `summon.sh` — it dynamically discovers skills.
 
 | Task | Command |
 |------|---------|
-| Summon for PR review | Uses GitHub Action |
-| Summon as subagent | `openclaw agent --agent bug-hunter-d33` |
-| Test single skill | `./skills/logic_hunt.sh <file> <diff>` |
-| Override all models | `MODEL=arcee/trinity-large ./scripts/summon.sh` |
-| Security only, strict | `PASSES=security SECURITY_MODEL=trinity-large ./scripts/summon.sh` |
+| Summon for PR validation | Uses GitHub Action |
+| Summon as subagent | `openclaw agent --agent test-runner-faye` |
+| Test single skill | `./skills/test-runner.sh` |
+| Override threshold | `COVERAGE_THRESHOLD=80 ./scripts/validate.sh` |
 
 ---
 
-*Operational questions: See this file. Identity questions: See SOUL.md.*
-*The hunter is summoned. The hunt follows protocol. The quarry is found.*
+*The tests run. The coverage speaks. Faye delivers truth.*

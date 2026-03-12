@@ -1,45 +1,50 @@
-# Bug Hunter D33
+# Test Runner Faye 🤖
 
-*"In a world of infinite code, someone must hunt the bugs that dwell in the shadows."*
+> *"The test that passes is worthless. The test that fails tells the truth."*
 
-A dual-purpose code review system: GitHub Action for CI/CD, OpenClaw subagent for runtime hunting.
+A GitHub Action and OpenClaw subagent for running test suites and analyzing code coverage on pull requests.
 
-## Summoning
+## Features
 
-### As GitHub Action
+- **Test Execution** — Runs your test suite (Jest, Vitest, pytest, Go test, Cargo test)
+- **Coverage Analysis** — Measures line, branch, and function coverage
+- **Delta Coverage** — Analyzes coverage on new/changed code in PRs
+- **Threshold Enforcement** — Fails if coverage drops below your threshold
+
+## Usage
+
+### GitHub Actions
+
 ```yaml
-uses: lux-sp4rk/bug-hunter-d33@main
-with:
-  arcee-api-key: ${{ secrets.ARCEE_API_KEY }}
-  passes: logic,security,performance
+name: Test Runner Faye
+on: [pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lux-sp4rk/test-runner-faye@v1
+        with:
+          arcee-api-key: ${{ secrets.ARCEE_API_KEY }}
+          coverage-threshold: 70
 ```
 
-### As Subagent
-```bash
-openclaw agent --agent bug-hunter-d33 --task "review PR #193"
-```
+### Configuration
 
-## The Three Passes
+| Input | Description | Default |
+|-------|-------------|---------|
+| `arcee-api-key` | Arcee API key | Required |
+| `model` | Model to use | `arcee/trinity-mini` |
+| `passes` | Which passes to run | `test,coverage,delta` |
+| `coverage-threshold` | Min coverage % | `70` |
+| `test-command` | Override test command | Auto-detect |
+| `coverage-command` | Override coverage command | Auto-detect |
 
-Every hunt follows the ancient ways:
+## For Arachne
 
-1. **Logic Hunter** — Finds edge cases, broken assumptions, silent failures
-2. **Security Hunter** — Tracks vulnerabilities, auth gaps, injection paths
-3. **Performance Hunter** — Hunts leaks, N+1s, inefficient patterns
+Faye is one of Arachne's summonable sub-agents. See `dotfiles` for integration.
 
-## Configuration
+## License
 
-| Input | Default | Description |
-|-------|---------|-------------|
-| `arcee-api-key` | required | Your Arcee API key |
-| `model` | `arcee/trinity-mini` | Model to use for hunting |
-| `passes` | `logic,security` | Which hunters to summon |
-| `severity-threshold` | `warning` | `info` / `warning` / `error` |
-| `custom-prompts` | — | Path to override prompts |
-
-## The Hunters
-
-See `SOUL.md` for the full persona.
-
----
-*In the distance, a horse whinnies. The hunt begins.*
+MIT
