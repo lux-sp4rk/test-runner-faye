@@ -3,6 +3,9 @@
 
 set -e
 
+# Get script directory for sourcing other scripts
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 echo "🧪 Running test suite..."
 
 # Get test command from environment or detect
@@ -89,22 +92,37 @@ fi
 
 echo "✅ Test suite complete: $PASSED passed, $FAILED failed"
 
-# AI-powered failure diagnosis (if failures exist and model is large)
+# AI-powered failure diagnosis (if failures exist and API key is set)
 if [ "$FAILED" -gt 0 ] && [ -n "$ARCEE_API_KEY" ]; then
 	echo ""
 	echo "🤖 Running AI failure diagnosis..."
+	echo "   SCRIPT_DIR: $SCRIPT_DIR"
+	echo "   AI Analyzer: $SCRIPT_DIR/ai-analyzer.sh"
+
+	# Check if ai-analyzer.sh exists
+	if [ ! -f "$SCRIPT_DIR/ai-analyzer.sh" ]; then
+		echo "   ❌ ai-analyzer.sh not found at $SCRIPT_DIR/ai-analyzer.sh"
+	else
+		echo "   ✅ ai-analyzer.sh found"
+	fi
 
 	# Get git diff for context
 	CODE_CONTEXT=$(git diff HEAD -- '*.js' '*.ts' '*.jsx' '*.tsx' '*.py' 2>/dev/null | head -200 || echo "")
 
 	# Call AI analyzer
-	DIAGNOSIS=$(AIAnalyzer="$SCRIPT_DIR/ai-analyzer.sh" bash -c "
-    source '$SCRIPT_DIR/ai-analyzer.sh' 2>/dev/null || true
-    analyze_failures '$FAILURES' '$CODE_CONTEXT'
-  " 2>/dev/null || echo "AI diagnosis unavailable")
+	echo "   🔍 Calling analyze_failures with $FAILED failures..."
+	echo "   FAILURES data: $FAILURES"
 
-	if [ -n "$DIAGNOSIS" ]; then
+	# Call the AI analyzer script directly with arguments
+	DIAGNOSIS=$("$SCRIPT_DIR/ai-analyzer.sh" failures "$FAILURES" "$CODE_CONTEXT")
+
+	if [ -n "$DIAGNOSIS" ] && [ "$DIAGNOSIS" != "AI diagnosis unavailable" ]; then
+		echo ""
 		echo "$DIAGNOSIS"
-		echo "ai_diagnosis=$DIAGNOSIS" >>"$GITHUB_OUTPUT"
+		if [ -n "$GITHUB_OUTPUT" ]; then
+			echo "ai_diagnosis=$DIAGNOSIS" >>"$GITHUB_OUTPUT"
+		fi
+	else
+		echo "   ⚠️ AI diagnosis returned empty or unavailable"
 	fi
 fi
