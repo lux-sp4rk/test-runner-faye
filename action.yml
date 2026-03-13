@@ -10,9 +10,9 @@ inputs:
     description: 'Arcee API key for analysis'
     required: true
   model:
-    description: 'Model to use (arcee/trinity-mini, arcee/trinity-large, etc.)'
+    description: 'Model to use (trinity-mini, trinity-large-preview)'
     required: false
-    default: 'arcee/trinity-mini'
+    default: 'trinity-large-preview'
   passes:
     description: 'Which validation passes to run (comma-separated: test,coverage,delta)'
     required: false
@@ -145,6 +145,35 @@ runs:
         echo "🔬 Detected project type: $PROJECT_TYPE ($PKG_MANAGER)"
         if [ -n "$TEST_COMMAND" ]; then
           echo "📋 Test command: $TEST_COMMAND"
+        fi
+
+    - name: Smart Test Selection
+      id: smart-tests
+      if: inputs.model == 'trinity-large-preview'
+      shell: bash
+      env:
+        ARCEE_API_KEY: ${{ inputs.arcee-api-key }}
+        MODEL: ${{ inputs.model }}
+      run: |
+        echo "🧠 Running smart test selection..."
+        
+        # Get list of test files
+        TEST_FILES=$(find . -type f \( -name "*.test.*" -o -name "*.spec.*" -o -name "*_test.py" -o -name "test_*.py" \) 2>/dev/null | head -30 || echo "")
+        
+        # Get recent changes
+        CHANGED_FILES=$(git diff --name-only HEAD~10 -- '*.js' '*.ts' '*.jsx' '*.tsx' '*.py' 2>/dev/null | head -20 || echo "")
+        
+        if [ -n "$CHANGED_FILES" ] && [ -n "$TEST_FILES" ]; then
+          SKILLS_PATH=".test-runner-faye/skills"
+          PREDICTION=$("$SKILLS_PATH/ai-analyzer.sh" predict "$CHANGED_FILES" "$TEST_FILES" 2>/dev/null || echo "Smart selection unavailable")
+          
+          if [ -n "$PREDICTION" ] && [ "$PREDICTION" != "Smart selection unavailable" ]; then
+            echo "## 🎯 Smart Test Selection"
+            echo "$PREDICTION"
+            echo "smart_selection=$PREDICTION" >> "$GITHUB_OUTPUT"
+          fi
+        else
+          echo "Skipping smart selection (no changes or test files detected)"
         fi
 
     - name: Run Test Suite

@@ -53,3 +53,39 @@ if [ -n "$GITHUB_OUTPUT" ]; then
 fi
 
 echo "✅ Coverage analysis complete: $PERCENT% (threshold: $COVERAGE_THRESHOLD%)"
+
+# Get script directory for AI analyzer
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# AI-powered coverage narrative (if uncovered code exists and model is large)
+if [ "$PERCENT" -lt 100 ] && [ -n "$ARCEE_API_KEY" ]; then
+  echo ""
+  echo "🤖 Generating coverage narrative..."
+  
+  # Extract uncovered files/lines
+  UNCOVERED=""
+  if [ -f "coverage/coverage-summary.json" ]; then
+    UNCOVERED=$(jq -r '. | to_entries | .[] | select(.value.lines.pct < 100) | "\(.key): \(.value.lines.pct)% uncovered"' coverage/coverage-summary.json 2>/dev/null | head -20 || echo "")
+  fi
+  
+  if [ -n "$UNCOVERED" ]; then
+    # Get source code for uncovered files
+    CODE_CONTEXT=""
+    for file in $(echo "$UNCOVERED" | cut -d: -f1 | head -5); do
+      if [ -f "$file" ]; then
+        CODE_CONTEXT="$CODE_CONTEXT\n\n## $file\n$(head -50 "$file")"
+      fi
+    done
+    
+    # Call AI analyzer
+    NARRATIVE=$(AIAnalyzer="$SCRIPT_DIR/ai-analyzer.sh" bash -c "
+      source '$SCRIPT_DIR/ai-analyzer.sh' 2>/dev/null || true
+      explain_coverage '$UNCOVERED' '$CODE_CONTEXT'
+    " 2>/dev/null || echo "AI narrative unavailable")
+    
+    if [ -n "$NARRATIVE" ] && [ "$NARRATIVE" != "AI narrative unavailable" ]; then
+      echo "$NARRATIVE"
+      echo "ai_narrative=$NARRATIVE" >> "$GITHUB_OUTPUT"
+    fi
+  fi
+fi

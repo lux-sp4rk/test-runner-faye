@@ -65,3 +65,23 @@ if [ -n "$GITHUB_OUTPUT" ]; then
 fi
 
 echo "✅ Test suite complete: $PASSED passed, $FAILED failed"
+
+# AI-powered failure diagnosis (if failures exist and model is large)
+if [ "$FAILED" -gt 0 ] && [ -n "$ARCEE_API_KEY" ]; then
+  echo ""
+  echo "🤖 Running AI failure diagnosis..."
+  
+  # Get git diff for context
+  CODE_CONTEXT=$(git diff HEAD -- '*.js' '*.ts' '*.jsx' '*.tsx' '*.py' 2>/dev/null | head -200 || echo "")
+  
+  # Call AI analyzer
+  DIAGNOSIS=$(AIAnalyzer="$SCRIPT_DIR/ai-analyzer.sh" bash -c "
+    source '$SCRIPT_DIR/ai-analyzer.sh' 2>/dev/null || true
+    analyze_failures '$FAILURES' '$CODE_CONTEXT'
+  " 2>/dev/null || echo "AI diagnosis unavailable")
+  
+  if [ -n "$DIAGNOSIS" ]; then
+    echo "$DIAGNOSIS"
+    echo "ai_diagnosis=$DIAGNOSIS" >> "$GITHUB_OUTPUT"
+  fi
+fi
