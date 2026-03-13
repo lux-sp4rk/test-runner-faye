@@ -1,51 +1,53 @@
-name: 'Test Runner Faye'
-description: 'Summon Faye to validate your code through tests and coverage analysis. Runs test suites and measures coverage on pull requests.'
-author: 'lux-sp4rk'
+name: "Test Runner Faye"
+description: "Summon Faye to validate your code through tests and coverage analysis. Runs test suites and measures coverage on pull requests."
+author: "lux-sp4rk"
 branding:
-  icon: 'check-circle'
-  color: 'green'
+  icon: "check-circle"
+  color: "green"
 
 inputs:
   arcee-api-key:
-    description: 'Arcee API key for analysis'
+    description: "Arcee API key for analysis"
     required: true
   model:
-    description: 'Model to use (trinity-mini, trinity-large-preview)'
+    description: "Model to use (trinity-mini, trinity-large-preview)"
     required: false
-    default: 'trinity-large-preview'
+    default: "trinity-large-preview"
   passes:
-    description: 'Which validation passes to run (comma-separated: test,coverage,delta)'
+    description: "Which validation passes to run (comma-separated: test,coverage,delta)"
     required: false
-    default: 'test,coverage,delta'
+    default: "test,coverage,delta"
   coverage-threshold:
-    description: 'Minimum coverage percentage to pass (0-100)'
+    description: "Minimum coverage percentage to pass (0-100)"
     required: false
-    default: '80'
+    default: "80"
   test-command:
-    description: 'Command to run tests (e.g., npm test, pytest, go test)'
+    description: "Command to run tests (e.g., npm test, pytest, go test)"
     required: false
-    default: ''
+    default: ""
   coverage-command:
-    description: 'Command to run coverage (e.g., npm run test:coverage)'
+    description: "Command to run coverage (e.g., npm run test:coverage)"
     required: false
-    default: ''
+    default: ""
   custom-prompts-path:
-    description: 'Path to custom prompt overrides'
+    description: "Path to custom prompt overrides"
     required: false
-    default: ''
+    default: ""
 
 outputs:
   status:
-    description: 'Overall validation result: success, warning, or failure'
+    description: "Overall validation result: success, warning, or failure"
   findings:
-    description: 'JSON array of all findings'
+    description: "JSON array of all findings"
   coverage:
-    description: 'Coverage percentage'
+    description: "Coverage percentage"
   test-results:
-    description: 'Test execution summary'
+    description: "Test execution summary"
+  test-status:
+    description: "Test execution status: success or failure"
 
 runs:
-  using: 'composite'
+  using: "composite"
   steps:
     - uses: actions/checkout@v4
       with:
@@ -56,17 +58,17 @@ runs:
       run: |
         # Install system dependencies
         sudo apt-get update -qq && sudo apt-get install -y -qq jq curl bc
-        
+
         # Setup workspace
         mkdir -p .test-runner-faye
-        
+
         # Copy prompts from action
         ACTION_PATH="${{ github.action_path }}"
         cp -r "$ACTION_PATH/prompts" .test-runner-faye/ || true
-        
+
         # Copy skills from action
         cp -r "$ACTION_PATH/skills" .test-runner-faye/ || true
-        
+
         # Override with custom prompts if provided
         if [ -n "${{ inputs.custom-prompts-path }}" ] && [ -d "${{ inputs.custom-prompts-path }}" ]; then
           cp -r "${{ inputs.custom-prompts-path }}"/* .test-runner-faye/prompts/ 2>/dev/null || true
@@ -80,7 +82,7 @@ runs:
         TEST_COMMAND=""
         COVERAGE_COMMAND=""
         PKG_MANAGER="npm"
-        
+
         # Node.js
         if [ -f "package.json" ]; then
           PROJECT_TYPE="nodejs"
@@ -137,11 +139,11 @@ runs:
           TEST_COMMAND="cargo test"
           COVERAGE_COMMAND="cargo test --coverage"
         fi
-        
+
         echo "project=$PROJECT_TYPE" >> "$GITHUB_OUTPUT"
         echo "test_command=$TEST_COMMAND" >> "$GITHUB_OUTPUT"
         echo "coverage_command=$COVERAGE_COMMAND" >> "$GITHUB_OUTPUT"
-        
+
         echo "🔬 Detected project type: $PROJECT_TYPE ($PKG_MANAGER)"
         if [ -n "$TEST_COMMAND" ]; then
           echo "📋 Test command: $TEST_COMMAND"
@@ -156,13 +158,13 @@ runs:
         MODEL: ${{ inputs.model }}
       run: |
         echo "🧠 Running smart test selection..."
-        
+
         # Get list of test files
         TEST_FILES=$(find . -type f \( -name "*.test.*" -o -name "*.spec.*" -o -name "*_test.py" -o -name "test_*.py" \) 2>/dev/null | head -30 || echo "")
-        
+
         # Get recent changes
         CHANGED_FILES=$(git diff --name-only HEAD~10 -- '*.js' '*.ts' '*.jsx' '*.tsx' '*.py' 2>/dev/null | head -20 || echo "")
-        
+
         if [ -n "$CHANGED_FILES" ] && [ -n "$TEST_FILES" ]; then
           SKILLS_PATH=".test-runner-faye/skills"
           PREDICTION=$("$SKILLS_PATH/ai-analyzer.sh" predict "$CHANGED_FILES" "$TEST_FILES" 2>/dev/null || echo "Smart selection unavailable")
@@ -219,7 +221,7 @@ runs:
       env:
         TEST_RESULTS: ${{ steps.tests.outputs.results }}
         COVERAGE_PERCENT: ${{ steps.coverage.outputs.percent }}
-        STATUS: ${{ steps.coverage.outputs.status }}
+        STATUS: ${{ steps.overall.outputs.status }}
         PROJECT_TYPE: ${{ steps.project.outputs.project }}
       with:
         script: |
@@ -234,10 +236,10 @@ runs:
           const coverage = parseFloat(process.env.COVERAGE_PERCENT || '0');
           const status = process.env.STATUS || 'failure';
           const projectType = process.env.PROJECT_TYPE || 'unknown';
-          
+
           let body = `## 🤖 Test Runner Faye Report\n\n`;
           body += `*Project: **${projectType}** | Coverage: **${coverage}%** | Tests: ${testResults.passed} passed, ${testResults.failed} failed*\n\n`;
-          
+
           if (testResults.failed > 0) {
             body += `### ❌ Test Failures (${testResults.failed})\n\n`;
             (testResults.failures || []).slice(0, 5).forEach(f => {
@@ -246,7 +248,7 @@ runs:
             if (testResults.failures && testResults.failures.length > 5) body += `- *...and ${testResults.failures.length - 5} more*\n`;
             body += '\n';
           }
-          
+
           if (coverage < 70 && coverage > 0) {
             body += `### ⚠️ Low Coverage (${coverage}%)\n\n`;
             body += `Coverage is below the 70% threshold. Consider adding tests for uncovered areas.\n\n`;
@@ -254,9 +256,9 @@ runs:
             body += `### ❌ Coverage Analysis Failed\n\n`;
             body += `Could not determine coverage. Check logs for details.\n\n`;
           }
-          
+
           body += `---\n*Validation status: **${status}***`;
-          
+
           // Post comment
           try {
             const { data: comments } = await github.rest.issues.listComments({
@@ -286,8 +288,22 @@ runs:
             console.log("Error posting/updating comment:", e);
           }
 
+    - name: Set Overall Status
+      id: overall
+      shell: bash
+      env:
+        TEST_STATUS: ${{ steps.tests.outputs.test_status }}
+        COVERAGE_STATUS: ${{ steps.coverage.outputs.status }}
+      run: |
+        OVERALL_STATUS="success"
+        if [ "$TEST_STATUS" == "failure" ] || [ "$COVERAGE_STATUS" == "failure" ]; then
+          OVERALL_STATUS="failure"
+        fi
+        echo "status=$OVERALL_STATUS" >> "$GITHUB_OUTPUT"
+        echo "📊 Overall status: $OVERALL_STATUS (tests: $TEST_STATUS, coverage: $COVERAGE_STATUS)"
+
     - name: Fail on Failure
-      if: steps.coverage.outputs.status == 'failure'
+      if: steps.overall.outputs.status == 'failure'
       shell: bash
       run: |
         echo "❌ Tests failed or coverage below threshold."

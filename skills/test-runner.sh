@@ -13,75 +13,98 @@ PASSED=0
 FAILED=0
 SKIPPED=0
 FAILURES="[]"
+TEST_STATUS="success"
 
 # Run tests with JSON output if possible
 if echo "$TEST_COMMAND" | grep -qE "jest|vitest"; then
-  # Ensure we have a reporter that produces JSON
-  JSON_CMD="$TEST_COMMAND --reporter=json --outputFile=test-results.json"
-  if echo "$TEST_COMMAND" | grep -q "jest"; then
-    JSON_CMD="$TEST_COMMAND --json --outputFile=test-results.json"
-  fi
-  
-  echo "Running: $JSON_CMD"
-  $JSON_CMD 2>&1 || true
-  
-  if [ -f test-results.json ]; then
-    PASSED=$(jq '.numPassedTests // 0' test-results.json)
-    FAILED=$(jq '.numFailedTests // 0' test-results.json)
-    SKIPPED=$(jq '.numPendingTests // 0' test-results.json)
-    
-    # Extract failure details
-    FAILURES=$(jq -c '[.testResults[].assertionResults[] | select(.status=="failed") | {name: .fullName, error: .failureMessages[0]}] | .[0:10]' test-results.json 2>/dev/null || echo "[]")
-    
-    rm -f test-results.json
-  else
-    echo "⚠️ Failed to produce test-results.json, falling back to basic execution"
-    $TEST_COMMAND 2>&1 || true
-    # We can't easily parse output, so we assume failure if exit code was non-zero
-    # But we already did || true
-  fi
+	# Ensure we have a reporter that produces JSON
+	JSON_CMD="$TEST_COMMAND --reporter=json --outputFile=test-results.json"
+	if echo "$TEST_COMMAND" | grep -q "jest"; then
+		JSON_CMD="$TEST_COMMAND --json --outputFile=test-results.json"
+	fi
+
+	echo "Running: $JSON_CMD"
+	if $JSON_CMD 2>&1; then
+		TEST_STATUS="success"
+	else
+		TEST_STATUS="failure"
+	fi
+
+	if [ -f test-results.json ]; then
+		PASSED=$(jq '.numPassedTests // 0' test-results.json)
+		FAILED=$(jq '.numFailedTests // 0' test-results.json)
+		SKIPPED=$(jq '.numPendingTests // 0' test-results.json)
+
+		# Extract failure details
+		FAILURES=$(jq -c '[.testResults[].assertionResults[] | select(.status=="failed") | {name: .fullName, error: .failureMessages[0]}] | .[0:10]' test-results.json 2>/dev/null || echo "[]")
+
+		rm -f test-results.json
+
+		# Override status based on parsed results
+		if [ "$FAILED" -gt 0 ]; then
+			TEST_STATUS="failure"
+		fi
+	else
+		echo "⚠️ Failed to produce test-results.json, falling back to basic execution"
+		if $TEST_COMMAND 2>&1; then
+			TEST_STATUS="success"
+		else
+			TEST_STATUS="failure"
+			FAILED=1
+		fi
+	fi
 elif echo "$TEST_COMMAND" | grep -q "pytest"; then
-  $TEST_COMMAND --json-report --json-report-file=test-results.json 2>&1 || true
-  if [ -f test-results.json ]; then
-    PASSED=$(jq '.summary.passed // 0' test-results.json)
-    FAILED=$(jq '.summary.failed // 0' test-results.json)
-    SKIPPED=$(jq '.summary.skipped // 0' test-results.json)
-    FAILURES=$(jq -c '[.tests[] | select(.outcome=="failed") | {name: .nodeid, error: .call.longrepr}] | .[0:10]' test-results.json 2>/dev/null || echo "[]")
-    rm -f test-results.json
-  fi
+	if $TEST_COMMAND --json-report --json-report-file=test-results.json 2>&1; then
+		TEST_STATUS="success"
+	else
+		TEST_STATUS="failure"
+	fi
+	if [ -f test-results.json ]; then
+		PASSED=$(jq '.summary.passed // 0' test-results.json)
+		FAILED=$(jq '.summary.failed // 0' test-results.json)
+		SKIPPED=$(jq '.summary.skipped // 0' test-results.json)
+		FAILURES=$(jq -c '[.tests[] | select(.outcome=="failed") | {name: .nodeid, error: .call.longrepr}] | .[0:10]' test-results.json 2>/dev/null || echo "[]")
+		rm -f test-results.json
+		if [ "$FAILED" -gt 0 ]; then
+			TEST_STATUS="failure"
+		fi
+	fi
 else
-  # Fallback: just run and capture
-  if $TEST_COMMAND 2>&1; then
-    PASSED=1 # Assume 1 pass if successful
-  else
-    FAILED=1 # Assume 1 fail if failed
-  fi
+	# Fallback: just run and capture
+	if $TEST_COMMAND 2>&1; then
+		PASSED=1 # Assume 1 pass if successful
+		TEST_STATUS="success"
+	else
+		FAILED=1 # Assume 1 fail if failed
+		TEST_STATUS="failure"
+	fi
 fi
 
 # Set outputs for GitHub Actions
 if [ -n "$GITHUB_OUTPUT" ]; then
-  RESULTS_JSON="{\"passed\":$PASSED,\"failed\":$FAILED,\"skipped\":$SKIPPED,\"failures\":$FAILURES}"
-  echo "results=$RESULTS_JSON" >> "$GITHUB_OUTPUT"
+	RESULTS_JSON="{\"passed\":$PASSED,\"failed\":$FAILED,\"skipped\":$SKIPPED,\"failures\":$FAILURES}"
+	echo "results=$RESULTS_JSON" >>"$GITHUB_OUTPUT"
+	echo "test_status=$TEST_STATUS" >>"$GITHUB_OUTPUT"
 fi
 
 echo "✅ Test suite complete: $PASSED passed, $FAILED failed"
 
 # AI-powered failure diagnosis (if failures exist and model is large)
 if [ "$FAILED" -gt 0 ] && [ -n "$ARCEE_API_KEY" ]; then
-  echo ""
-  echo "🤖 Running AI failure diagnosis..."
-  
-  # Get git diff for context
-  CODE_CONTEXT=$(git diff HEAD -- '*.js' '*.ts' '*.jsx' '*.tsx' '*.py' 2>/dev/null | head -200 || echo "")
-  
-  # Call AI analyzer
-  DIAGNOSIS=$(AIAnalyzer="$SCRIPT_DIR/ai-analyzer.sh" bash -c "
+	echo ""
+	echo "🤖 Running AI failure diagnosis..."
+
+	# Get git diff for context
+	CODE_CONTEXT=$(git diff HEAD -- '*.js' '*.ts' '*.jsx' '*.tsx' '*.py' 2>/dev/null | head -200 || echo "")
+
+	# Call AI analyzer
+	DIAGNOSIS=$(AIAnalyzer="$SCRIPT_DIR/ai-analyzer.sh" bash -c "
     source '$SCRIPT_DIR/ai-analyzer.sh' 2>/dev/null || true
     analyze_failures '$FAILURES' '$CODE_CONTEXT'
   " 2>/dev/null || echo "AI diagnosis unavailable")
-  
-  if [ -n "$DIAGNOSIS" ]; then
-    echo "$DIAGNOSIS"
-    echo "ai_diagnosis=$DIAGNOSIS" >> "$GITHUB_OUTPUT"
-  fi
+
+	if [ -n "$DIAGNOSIS" ]; then
+		echo "$DIAGNOSIS"
+		echo "ai_diagnosis=$DIAGNOSIS" >>"$GITHUB_OUTPUT"
+	fi
 fi
