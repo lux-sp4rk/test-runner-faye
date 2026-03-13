@@ -158,6 +158,10 @@ runs:
         PASSES: ${{ inputs.passes }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
+        if [ -z "$TEST_COMMAND" ]; then
+          echo "❌ No test command detected or provided."
+          exit 1
+        fi
         chmod +x "$ACTION_PATH/skills/test-runner.sh"
         "$ACTION_PATH/skills/test-runner.sh"
 
@@ -171,6 +175,12 @@ runs:
         COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
+        if [ -z "$COVERAGE_COMMAND" ]; then
+          echo "⚠️ No coverage command detected or provided. Skipping coverage analysis."
+          echo "percent=0" >> "$GITHUB_OUTPUT"
+          echo "status=success" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
         chmod +x "$ACTION_PATH/skills/coverage-analyzer.sh"
         "$ACTION_PATH/skills/coverage-analyzer.sh"
 
@@ -186,7 +196,9 @@ runs:
         script: |
           let testResults = {passed:0, failed:0, skipped:0};
           try {
-            testResults = JSON.parse(process.env.TEST_RESULTS || '{"passed":0,"failed":0,"skipped":0}');
+            if (process.env.TEST_RESULTS) {
+              testResults = JSON.parse(process.env.TEST_RESULTS);
+            }
           } catch(e) {
             console.log("Error parsing test results:", e);
           }
@@ -206,9 +218,12 @@ runs:
             body += '\n';
           }
           
-          if (coverage < 70) {
+          if (coverage < 70 && coverage > 0) {
             body += `### ⚠️ Low Coverage (${coverage}%)\n\n`;
             body += `Coverage is below the 70% threshold. Consider adding tests for uncovered areas.\n\n`;
+          } else if (coverage === 0 && status === 'failure') {
+            body += `### ❌ Coverage Analysis Failed\n\n`;
+            body += `Could not determine coverage. Check logs for details.\n\n`;
           }
           
           body += `---\n*Validation status: **${status}***`;
