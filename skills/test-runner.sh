@@ -38,8 +38,9 @@ if echo "$TEST_COMMAND" | grep -qE "jest|vitest"; then
 		FAILED=$(jq '.numFailedTests // 0' test-results.json)
 		SKIPPED=$(jq '.numPendingTests // 0' test-results.json)
 
-		# Extract failure details
-		FAILURES=$(jq -c '[.testResults[].assertionResults[] | select(.status=="failed") | {name: .fullName, error: .failureMessages[0]}] | .[0:10]' test-results.json 2>/dev/null || echo "[]")
+		# Extract failure details - vitest 3 uses "fail" status in nested tasks
+		# Also handles jest's "failed" status in assertionResults
+		FAILURES=$(jq -c '[.. | objects | select(.status == "fail") | {name: (.title // .fullName), error: ((.errors[0].message // .failureMessages[0]) | split("\n")[0])}] | .[0:10]' test-results.json 2>/dev/null || echo "[]")
 
 		rm -f test-results.json
 
