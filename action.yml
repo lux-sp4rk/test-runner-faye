@@ -168,11 +168,14 @@ runs:
         if [ -n "$CHANGED_FILES" ] && [ -n "$TEST_FILES" ]; then
           SKILLS_PATH=".test-runner-faye/skills"
           PREDICTION=$("$SKILLS_PATH/ai-analyzer.sh" predict "$CHANGED_FILES" "$TEST_FILES" 2>/dev/null || echo "Smart selection unavailable")
-          
+
           if [ -n "$PREDICTION" ] && [ "$PREDICTION" != "Smart selection unavailable" ]; then
             echo "## 🎯 Smart Test Selection"
             echo "$PREDICTION"
-            echo "smart_selection=$PREDICTION" >> "$GITHUB_OUTPUT"
+            # Write prediction to file, use fromFile syntax for GITHUB_OUTPUT
+            PREDICTION_FILE=$(mktemp)
+            printf '%s' "$PREDICTION" > "$PREDICTION_FILE"
+            echo "smart_selection_file=$PREDICTION_FILE" >> "$GITHUB_OUTPUT"
           fi
         else
           echo "Skipping smart selection (no changes or test files detected)"
