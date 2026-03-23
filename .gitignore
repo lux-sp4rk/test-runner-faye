@@ -1,0 +1,7 @@
+.bug-hunter/
+findings.json
+status
+*.log
+node_modules/
+.DS_Store
+thoughts/

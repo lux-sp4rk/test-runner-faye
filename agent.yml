@@ -1,0 +1,83 @@
+# OpenClaw Subagent Configuration
+# Test Runner Faye — Runtime Agent Mode
+
+name: test-runner-faye
+description: Summon Faye to run tests and analyze coverage
+
+# Agent identity from SOUL.md
+soul: SOUL.md
+
+# Capabilities
+capabilities:
+  - test-execution
+  - coverage-analysis
+  - delta-coverage
+  - validation
+
+# Runtime configuration
+runtime:
+  model: trinity-large-preview
+  temperature: 0.1
+  max_tokens: 6000
+  env:
+    COVERAGE_THRESHOLD: "70"
+
+# Task routing
+tasks:
+  validate-pr:
+    description: Run tests and analyze coverage for a PR
+    prompt: |
+      Validate PR #{pr_number} in {repo}.
+      Run test suite and measure coverage. Report results.
+    outputs:
+      - test-results.json
+      - coverage-report.md
+  
+  coverage-report:
+    description: Generate coverage analysis
+    prompt: |
+      Analyze coverage for {target}.
+      Identify uncovered areas and risky files.
+    outputs:
+      - coverage-report.md
+  
+  test-file:
+    description: Run tests for specific file or module
+    prompt: |
+      Run tests for {target}.
+      Report pass/fail status and any failures.
+    outputs:
+      - test-results.json
+
+# Integration
+integrations:
+  github:
+    enabled: true
+    comment-mode: pr-comment
+  
+  arcee:
+    model: trinity-large-preview
+    api_key_env: ARCEE_API_KEY
+
+# Validation passes
+passes:
+  test:
+    skill: skills/test-runner.sh
+    prompt: prompts/test-runner.md
+    priority: critical
+  
+  coverage:
+    skill: skills/coverage-analyzer.sh
+    prompt: prompts/coverage-analyzer.md
+    priority: critical
+  
+  delta:
+    skill: skills/delta-coverage.sh
+    prompt: prompts/delta-coverage.md
+    priority: high
+
+# Summoning incantation
+summoning: |
+  🤖 Test Runner Faye, awaken.
+  The code builds. The tests await.
+  Measure what is covered. Reveal what is not.
