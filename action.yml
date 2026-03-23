@@ -160,7 +160,7 @@ runs:
         echo "🧠 Running smart test selection..."
 
         # Get list of test files
-        TEST_FILES=$(find . -type f \( -name "*.test.*" -o -name "*.spec.*" -o -name "*_test.py" -o -name "test_*.py" \) 2>/dev/null | head -30 || echo "")
+        TEST_FILES=$(find . -path ./node_modules -prune -o -path ./.test-runner-faye -prune -o -type f \( -name "*.test.*" -o -name "*.spec.*" -o -name "*_test.py" -o -name "test_*.py" \) -print 2>/dev/null | head -30 || echo "")
 
         # Get recent changes
         CHANGED_FILES=$(git diff --name-only HEAD~10 -- '*.js' '*.ts' '*.jsx' '*.tsx' '*.py' 2>/dev/null | head -20 || echo "")
