@@ -33,6 +33,10 @@ inputs:
     description: "Path to custom prompt overrides"
     required: false
     default: ""
+  working-directory:
+    description: "Directory to change to before running tests (e.g., landing, apps/web)"
+    required: false
+    default: ""
 
 outputs:
   status:
@@ -191,6 +195,7 @@ runs:
         MODEL: ${{ inputs.model }}
         PASSES: ${{ inputs.passes }}
         ACTION_PATH: ${{ github.action_path }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
       run: |
         if [ -z "$TEST_COMMAND" ]; then
           echo "❌ No test command detected or provided."

@@ -15,6 +15,12 @@ SKIPPED=0
 FAILURES="[]"
 TEST_STATUS="success"
 
+# If a working directory is set, change into it before running
+if [ -n "$WORKING_DIRECTORY" ]; then
+	echo "📂 Changing to directory: $WORKING_DIRECTORY"
+	cd "$WORKING_DIRECTORY"
+fi
+
 if echo "$TEST_COMMAND" | grep -qE "jest|vitest"; then
 	JSON_CMD="$TEST_COMMAND --reporter=json --outputFile=test-results.json"
 	if echo "$TEST_COMMAND" | grep -q "jest"; then
@@ -22,7 +28,7 @@ if echo "$TEST_COMMAND" | grep -qE "jest|vitest"; then
 	fi
 
 	echo "Running: $JSON_CMD"
-	if $JSON_CMD 2>&1; then
+	if eval "$JSON_CMD" 2>&1; then
 		TEST_STATUS="success"
 	else
 		TEST_STATUS="failure"
@@ -48,7 +54,7 @@ if echo "$TEST_COMMAND" | grep -qE "jest|vitest"; then
 		fi
 	else
 		echo "⚠️ Failed to produce test-results.json, falling back to basic execution"
-		if $TEST_COMMAND 2>&1; then
+		if eval "$TEST_COMMAND" 2>&1; then
 			TEST_STATUS="success"
 		else
 			TEST_STATUS="failure"
@@ -56,7 +62,7 @@ if echo "$TEST_COMMAND" | grep -qE "jest|vitest"; then
 		fi
 	fi
 elif echo "$TEST_COMMAND" | grep -q "pytest"; then
-	if $TEST_COMMAND --json-report --json-report-file=test-results.json 2>&1; then
+	if eval "$TEST_COMMAND --json-report --json-report-file=test-results.json" 2>&1; then
 		TEST_STATUS="success"
 	else
 		TEST_STATUS="failure"
@@ -72,7 +78,7 @@ elif echo "$TEST_COMMAND" | grep -q "pytest"; then
 		fi
 	fi
 else
-	if $TEST_COMMAND 2>&1; then
+	if eval "$TEST_COMMAND" 2>&1; then
 		PASSED=1
 		TEST_STATUS="success"
 	else
