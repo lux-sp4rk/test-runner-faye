@@ -5,6 +5,11 @@ set -e
 
 echo "📊 Running coverage analysis..."
 
+if [ -n "$WORKING_DIRECTORY" ]; then
+	echo "📂 Changing to directory: $WORKING_DIRECTORY"
+	cd "$WORKING_DIRECTORY"
+fi
+
 # Get coverage command from environment
 COVERAGE_COMMAND="${COVERAGE_COMMAND:-npm run test:coverage}"
 COVERAGE_THRESHOLD="${COVERAGE_THRESHOLD:-70}"

@@ -87,6 +87,11 @@ runs:
         COVERAGE_COMMAND=""
         PKG_MANAGER="npm"
 
+        if [ -n "${{ inputs.working-directory }}" ]; then
+          echo "📂 Changing to working directory: ${{ inputs.working-directory }}"
+          cd "${{ inputs.working-directory }}"
+        fi
+
         # Node.js
         if [ -f "package.json" ]; then
           PROJECT_TYPE="nodejs"
@@ -213,6 +218,7 @@ runs:
         MODEL: ${{ inputs.model }}
         COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
         ACTION_PATH: ${{ github.action_path }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
       run: |
         if [ -z "$COVERAGE_COMMAND" ]; then
           echo "⚠️ No coverage command detected or provided. Skipping coverage analysis."
