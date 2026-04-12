@@ -5,13 +5,19 @@ set -e
 
 echo "📊 Running coverage analysis..."
 
+if [ -n "$WORKING_DIRECTORY" ]; then
+	echo "📂 Changing to directory: $WORKING_DIRECTORY"
+	cd "$WORKING_DIRECTORY"
+fi
+
 # Get coverage command from environment
 COVERAGE_COMMAND="${COVERAGE_COMMAND:-npm run test:coverage}"
 COVERAGE_THRESHOLD="${COVERAGE_THRESHOLD:-70}"
 
 # Run coverage
 echo "Running: $COVERAGE_COMMAND"
-$COVERAGE_COMMAND 2>&1 || true
+COVERAGE_OUTPUT=$(mktemp)
+$COVERAGE_COMMAND 2>&1 | tee "$COVERAGE_OUTPUT" || true
 
 PERCENT=0
 STATUS="failure"
@@ -35,6 +41,18 @@ for report in coverage/coverage-summary.json coverage/lcov.info coverage/cobertu
 		fi
 	fi
 done
+
+# Fallback: parse vitest/jest text output for line coverage
+if [ "$PERCENT" = "0" ] || [ -z "$PERCENT" ]; then
+	# Look for line like: "All files          |   79.25 |    82.16 |   67.22 |   79.25 |"
+	LINES_PCT=$(grep "^All files" "$COVERAGE_OUTPUT" | awk -F'|' '{gsub(/ /,"",$5); print $5}' | head -1)
+	if [ -n "$LINES_PCT" ]; then
+		PERCENT="$LINES_PCT"
+		echo "Extracted line coverage from text output: $PERCENT%"
+	fi
+fi
+
+rm -f "$COVERAGE_OUTPUT"
 
 # If percent is 0 and we didn't find a report, maybe it failed
 if [ -z "$PERCENT" ]; then PERCENT=0; fi
