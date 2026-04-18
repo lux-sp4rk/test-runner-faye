@@ -341,35 +341,17 @@ runs:
           body += `---\n`;
           body += `*Scouted by Test Runner Faye* 🔬`;
 
-          // Post or update comment
+          // Always post new comment (no update logic)
           try {
-            const { data: comments } = await github.rest.issues.listComments({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number
+              issue_number: context.issue.number,
+              body: body
             });
-            
-            const botComment = comments.find(c => c.body.includes('Test Runner Faye'));
-            
-            if (botComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-                body: body
-              });
-              console.log("Updated existing comment");
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: body
-              });
-              console.log("Created new comment");
-            }
+            console.log("Created new Faye report comment");
           } catch (e) {
-            console.log("Error posting/updating comment:", e.message);
+            console.log("Error posting comment:", e.message);
           }
 
     - name: Fail on Failure
